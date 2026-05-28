@@ -46,7 +46,7 @@ def run_server():
 
 def make_report(filtered, val_numbers):
     if not filtered:
-        return "هیچ داتایەک نییە!", None
+        return "❌هیچ داتایەک نییە!", None
     counts = {}
     for s in filtered:
         counts[s["type"]] = counts.get(s["type"], 0) + 1
@@ -56,11 +56,9 @@ def make_report(filtered, val_numbers):
         total += count
         msg += f"• {NAMES.get(key, key)}: {count} دانە\n"
     msg += f"\n✅ کۆی گشتی: {total} دانە"
-    
     keyboard = None
     if val_numbers:
-        keyboard = [[InlineKeyboardButton(f"📋 چەند سیم تەفعیل کراوە ({len(val_numbers)})", callback_data="show_validation")]]
-    
+        keyboard = [[InlineKeyboardButton(f"📋 چەند سیم تەفعیل کراوە ({len(val_numbers)})", callback_data="show❌ _validation")]]
     return msg, keyboard
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -68,29 +66,35 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     text = update.message.text
 
+    # پێشی validation چەک بکە
+    if "validation team" in text:
+        phone = re.search(r'07\d{8}', text)
+        if phone:
+            validation_numbers.append({"number": phone.group(), "time": datetime.now()})
+        sales_data.append({"type": "validation", "time": datetime.now()})
+        return
+
+    # چەک بکە ئایا چاوەڕێی تاریخی کەیفی خۆمە
     if context.user_data.get("waiting_custom"):
-        try:
-            parts = text.strip().split()
-            start = datetime.strptime(parts[0], "%Y-%m-%d")
-            end = datetime.strptime(parts[1], "%Y-%m-%d").replace(hour=23, minute=59)
-            filtered = [s for s in sales_data if start <= s["time"] <= end]
-            val = [v for v in validation_numbers if start <= v["time"] <= end]
-            msg, keyboard = make_report(filtered, val)
-            context.user_data["waiting_custom"] = False
-            reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
-            await update.message.reply_text(msg, reply_markup=reply_markup)
-            return
-        except:
-            await update.message.reply_text("هەڵە! نموونە:\n2026-05-01 2026-05-28")
-            return
+        parts = text.strip().split()
+        if len(parts) == 2:
+            try:
+                start = datetime.strptime(parts[0], "%Y-%m-%d")
+                end = datetime.strptime(parts[1], "%Y-%m-%d").replace(hour=23, minute=59)
+                filtered = [s for s in sales_data if start <= s["time"] <= end]
+                val = [v for v in validation_numbers if start <= v["time"] <= end]
+                msg, keyboard = make_report(filtered, val)
+                context.user_data["waiting_custom"] = False
+                reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
+                await update.message.reply_text(msg, reply_markup=reply_markup)
+                return
+            except:
+                await update.message.reply_text("هەڵە! نموونە:\n2026-05-01 2026-05-28")
+                return
 
     for key, keyword in CATEGORIES.items():
         if keyword in text:
             sales_data.append({"type": key, "time": datetime.now()})
-            if key == "validation":
-                phone = re.search(r'07\d{8}', text)
-                if phone:
-                    validation_numbers.append({"number": phone.group(), "time": datetime.now()})
             break
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -104,7 +108,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         msg = "📋 ژمارەکانی تەفعیل کراوە:\n\n"
         for i, v in enumerate(validation_numbers, 1):
-            msg += f"{i}. {v['number']} - {v['time'].strftime('%Y-%m-%d %H:%M')}\n"
+            msg += f"{i}. {v['number']} - {v['time'].strftime('%m-%d %H:%M')}\n"
         await query.edit_message_text(msg)
         return
 
