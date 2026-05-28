@@ -1,7 +1,5 @@
 import logging
-import threading
 import re
-from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 from datetime import datetime, timedelta
@@ -15,66 +13,50 @@ validation_numbers = []
 
 CATEGORIES = {
     "validation": "validation team",
-    "free_social_14": "فری سۆشیاڵ",
-    "red_monthly": "پاکێجی مانگانەی RED",
+    "free_social_14": "free social",
+    "red_monthly": "RED monthly",
     "red_25000": "RED 25,000",
-    "use_15": "یووز 15",
-    "use_30": "یووز 30",
-    "3month_red": "پاکێجی ٣ مانگی"
+    "use_15": "use 15",
+    "use_30": "use 30",
+    "3month_red": "3month red"
 }
 
 NAMES = {
     "validation": "Validation",
-    "free_social_14": "فری سۆشیاڵ 14 ڕۆژ",
-    "red_monthly": "RED مانگانە 15000",
+    "free_social_14": "Free Social 14",
+    "red_monthly": "RED 15000",
     "red_25000": "RED 25,000",
-    "use_15": "یووز 15",
-    "use_30": "یووز 30",
-    "3month_red": "RED 3 مانگ"
+    "use_15": "Use 15",
+    "use_30": "Use 30",
+    "3month_red": "RED 3 Month"
 }
 
-class Handler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"OK")
-    def log_message(self, format, *args):
-        pass
-
-def run_server():
-    HTTPServer(("0.0.0.0", 10000), Handler).serve_forever()
-
 def make_report(filtered, val_numbers):
-    if not filtered:
-        return "❌هیچ داتایەک نییە!", None
     counts = {}
     for s in filtered:
         counts[s["type"]] = counts.get(s["type"], 0) + 1
-    msg = "📊 ڕاپۆرتی فرۆشت:\n\n"
-    total = 0
-    for key, count in counts.items():
-        total += count
-        msg += f"• {NAMES.get(key, key)}: {count} دانە\n"
-    msg += f"\n✅ کۆی گشتی: {total} دانە"
-    keyboard = None
-    if val_numbers:
-        keyboard = [[InlineKeyboardButton(f"📋 چەند سیم تەفعیل کراوە ({len(val_numbers)})", callback_data="show❌ _validation")]]
+    if counts:
+        msg = "📊 Report:\n\n"
+        total = 0
+        for key, count in counts.items():
+            total += count
+            msg += f"- {NAMES.get(key, key)}: {count}\n"
+        msg += f"\n✅ Total: {total}"
+    else:
+        msg = "No data!"
+    keyboard = [[InlineKeyboardButton(f"📋 SIM activated ({len(val_numbers)})", callback_data="show_validation")]]
     return msg, keyboard
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
     text = update.message.text
-
-    # پێشی validation چەک بکە
     if "validation team" in text:
         phone = re.search(r'07\d{8}', text)
         if phone:
             validation_numbers.append({"number": phone.group(), "time": datetime.now()})
         sales_data.append({"type": "validation", "time": datetime.now()})
         return
-
-    # چەک بکە ئایا چاوەڕێی تاریخی کەیفی خۆمە
     if context.user_data.get("waiting_custom"):
         parts = text.strip().split()
         if len(parts) == 2:
@@ -85,13 +67,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 val = [v for v in validation_numbers if start <= v["time"] <= end]
                 msg, keyboard = make_report(filtered, val)
                 context.user_data["waiting_custom"] = False
-                reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
-                await update.message.reply_text(msg, reply_markup=reply_markup)
+                await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
                 return
             except:
-                await update.message.reply_text("هەڵە! نموونە:\n2026-05-01 2026-05-28")
+                await update.message.reply_text("Error! Example:\n2026-05-01 2026-05-28")
                 return
-
     for key, keyword in CATEGORIES.items():
         if keyword in text:
             sales_data.append({"type": key, "time": datetime.now()})
@@ -101,17 +81,15 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     now = datetime.now()
-
     if query.data == "show_validation":
         if not validation_numbers:
-            await query.answer("هیچ ژمارەیەک نییە!", show_alert=True)
+            await query.edit_message_text("No SIM activated!")
             return
-        msg = "📋 ژمارەکانی تەفعیل کراوە:\n\n"
+        msg = "📋 SIM activated:\n\n"
         for i, v in enumerate(validation_numbers, 1):
             msg += f"{i}. {v['number']} - {v['time'].strftime('%m-%d %H:%M')}\n"
         await query.edit_message_text(msg)
         return
-
     if query.data == "daily":
         start = now.replace(hour=0, minute=0, second=0)
         filtered = [s for s in sales_data if s["time"] >= start]
@@ -129,31 +107,27 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         val = validation_numbers
     elif query.data == "custom":
         context.user_data["waiting_custom"] = True
-        await query.edit_message_text("تاریخ بنووسە بەم شێوەیە:\n2026-05-01 2026-05-28")
+        await query.edit_message_text("Write date:\n2026-05-01 2026-05-28")
         return
-
     msg, keyboard = make_report(filtered, val)
-    reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
-    await query.edit_message_text(msg, reply_markup=reply_markup)
+    await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
-        [InlineKeyboardButton("📅 ڕۆژانە", callback_data="daily"),
-         InlineKeyboardButton("📆 هەفتانە", callback_data="weekly")],
-        [InlineKeyboardButton("🗓 مانگانە", callback_data="monthly"),
-         InlineKeyboardButton("📊 هەموو", callback_data="all")],
-        [InlineKeyboardButton("✏️ بە کەیفی خۆم", callback_data="custom")]
+        [InlineKeyboardButton("📅 Daily", callback_data="daily"),
+         InlineKeyboardButton("📆 Weekly", callback_data="weekly")],
+        [InlineKeyboardButton("🗓 Monthly", callback_data="monthly"),
+         InlineKeyboardButton("📊 All", callback_data="all")],
+        [InlineKeyboardButton("✏️ Custom", callback_data="custom")]
     ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("کام ڕاپۆرت دەتەوێت؟", reply_markup=reply_markup)
+    await update.message.reply_text("Which report?", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sales_data.clear()
     validation_numbers.clear()
-    await update.message.reply_text("✅ داتاکان سڕایەوە!")
+    await update.message.reply_text("✅ Cleared!")
 
 if __name__ == "__main__":
-    threading.Thread(target=run_server, daemon=True).start()
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("report", report))
     app.add_handler(CommandHandler("clear", clear))
